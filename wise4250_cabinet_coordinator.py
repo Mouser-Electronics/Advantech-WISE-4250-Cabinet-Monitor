@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 """
-wise4250_cabinet_coordinator.py (V5)
+wise4250_cabinet_coordinator.py (V6)
 Advantech WISE-4250 Industrial Cabinet Monitoring Edge Coordinator & REST Provisioner
 Author: Joseph Downing, Mouser Electronics
 Tested Firmware Baseline: WISE-4250 Fw A1.01 B04 / A3.00 B01
@@ -18,9 +18,7 @@ Hardware Notes:
   - DO 0..DO 4 are owned exclusively by the Coordinator (with WDT FSV fallback).
   - DO 5..DO 6 are owned exclusively by the WISE-4250-S232 P2P engine.
   - Hardwired Leak-Inhibit Interlock: The +12VDC feed to the parallel NO contacts
-    (terminals 11 COM and 14 NO) of DO 4 (IDEC RV8H-L-D24) and DO 5 (Schneider
-    RSLZVA1 + RSL1AB4BD) passes through an isolated NC leak-inhibit contact that
-    physically opens whenever a leak occurs (DI 3 = 1).
+(terminals 11 COM and 14 NO) of DO 4 (IDEC RV8H-L-D24 #1) and DO 5 (IDEC RV8H-L-D24 #2) passes through an isolated NC leak-inhibit contact that physically opens whenever a leak occurs (DI 3 = 1).
 """
 
 import argparse
@@ -144,7 +142,7 @@ def provision_nodes():
         (2, 0, "LED_Red_Alarm"),      # Adafruit 2993 Red wire; FSV = 0
         (3, 0, "Alarm_Buzzer"),       # Adafruit 2993 Orange wire; FSV = 0
         (4, 1, "Aux_Fan_Relay"),      # IDEC RV8H-L-D24 Coil A2-; FSV = 1 (Comm-loss cooling request)
-        (5, 0, "P2P_Temp_Fan_Cmd"),   # S232 P2P Rule 0 (RSLZVA1 + 24VDC RSL relay); FSV = 0
+        (5, 0, "P2P_Temp_Fan_Cmd"),   # S232 P2P Rule 0 (IDEC RV8H-L-D24 #2 Coil A2-); FSV = 0
         (6, 0, "P2P_RH_Warn_Cmd"),    # S232 P2P Rule 1 status output; FSV = 0
     ]
     s252_do_cfg = {
