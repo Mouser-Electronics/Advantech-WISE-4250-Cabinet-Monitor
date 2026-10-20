@@ -51,7 +51,7 @@ UBIDOTS_URL = f"https://industrial.api.ubidots.com/api/v1.6/devices/{UBIDOTS_DEV
 TEMP_HIGH_LIMIT_C = 30.0         # Channel 0 High Alarm Threshold (Celsius)
 RH_HIGH_LIMIT_PCT = 60.0         # Channel 1 High Alarm Threshold (% RH)
 POLL_INTERVAL_SEC = 2.0          # 2.0s coordinator poll (S232 updates every 5.0s)
-CSV_LOG_FILE = "wise4250_cabinet_event_log.csv"
+CSV_LOG_FILE = "wise4250_cabinet_telemetry_log.csv"
 
 auth = HTTPBasicAuth(WISE_USER, WISE_PASS)
 latched_alarm_code = 0  # 0=Normal, 1=Warning, 2=RH+Door, 3=Temp+FanFault, 4=Leak
@@ -235,8 +235,8 @@ def evaluate_cabinet_logic(temp_c, rh_pct, di):
 
     if active_critical > 0:
         latched_alarm_code = active_critical
-        # Discard a completed reset gesture while the critical fault remains active:
-        if di["reset_latched"] == 1 and di["reset_active"] == 0:
+        # Discard any reset request initiated while the critical fault is active:
+        if di["reset_latched"] == 1:
             clear_s252_reset_latch()
             
     elif latched_alarm_code >= 2:
