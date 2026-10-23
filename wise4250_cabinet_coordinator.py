@@ -1,10 +1,9 @@
 #!/usr/bin/env python3
 """
-wise4250_cabinet_coordinator.py (V6)
+wise4250_cabinet_coordinator.py (V7 - Option A Channel Mapping)
 Advantech WISE-4250 Industrial Cabinet Monitoring Edge Coordinator & REST Provisioner
 Author: Joseph Downing, Mouser Electronics
 Tested Firmware Baseline: WISE-4250 Fw A1.01 B04 / A3.00 B01
-
 Hardware Notes:
   - DI 0 (Potter AMS-7-B magnetic switch, held closed when door is shut) and
     DI 4 (Banner SSA-EB1P-02 NC contact 11-12, closed when armed, opens when pushed)
@@ -15,12 +14,12 @@ Hardware Notes:
     a critical alarm after the initiating fault clears.
   - Digital filter is set to 200 (20.0ms at 0.1ms/unit) to match the 20ms contact
     bounce specification of the Banner SSA-EB1P-02 pushbutton.
-  - DO 0..DO 4 are owned exclusively by the Coordinator (with WDT FSV fallback).
-  - DO 5..DO 6 are owned exclusively by the WISE-4250-S232 P2P engine.
+  - DO 0..DO 1 are owned exclusively by the WISE-4250-S232 P2P engine.
+  - DO 2..DO 6 are owned exclusively by the Coordinator (with WDT FSV fallback).
   - Hardwired Leak-Inhibit Interlock: The +12VDC feed to the parallel NO contacts
-(terminals 11 COM and 14 NO) of DO 4 (IDEC RV8H-L-D24 #1) and DO 5 (IDEC RV8H-L-D24 #2) passes through an isolated NC leak-inhibit contact that physically opens whenever a leak occurs (DI 3 = 1).
+    (terminals 11 COM and 14 NO) of DO 0 (Schneider RSL relay) and DO 6 (IDEC RV8H-L-D24) 
+    passes through an isolated NC leak-inhibit contact that physically opens whenever a leak occurs (DI 3 = 1).
 """
-
 import argparse
 import csv
 import os
@@ -33,8 +32,8 @@ from requests.auth import HTTPBasicAuth
 # ==============================================================================
 # 1. NETWORK, AUTHENTICATION & UBIDOTS CONFIGURATION
 # ==============================================================================
-S232_IP = os.getenv("WISE_S232_IP", "192.168.10.101")
-S252_IP = os.getenv("WISE_S252_IP", "192.168.10.102")
+S232_IP = os.getenv("WISE_S232_IP", "192.168.50.101")
+S252_IP = os.getenv("WISE_S252_IP", "192.168.50.102")
 WISE_USER = os.getenv("WISE_USER", "root")
 WISE_PASS = os.getenv("WISE_PASS")
 UBIDOTS_TOKEN = os.getenv("UBIDOTS_TOKEN")
@@ -106,8 +105,6 @@ def provision_nodes():
     print("    [+] WISE-4250-S232 Sensor Channels 0 & 1 configured.")
 
     print(f"[*] Provisioning WISE-4250-S252 Digital Inputs at http://{S252_IP} ...")
-    # Tuple format: (Channel, Mode, Invert_Signal, Tag_Name)
-    # DI 0 (AMS-7-B) and DI 4 (SSA-EB1P-02 NC 11-12) use Inv=1 so Closed/Armed=0, Open/Pushed=1
     di_tags_modes = [
         (0, 0, 1, "Cabinet_Door_Sw"),    # Mode 0 = DI, Inv = 1 (Door Closed=0, Open=1)
         (1, 0, 0, "Cooling_Fan_Stat"),   # Mode 0 = DI, Inv = 0 (Fan Off=0, Running=1)
@@ -135,15 +132,15 @@ def provision_nodes():
     print("    [+] WISE-4250-S252 Digital Inputs DI 0..DI 4 configured (20.0ms filter).")
 
     print(f"[*] Provisioning WISE-4250-S252 Digital Outputs at http://{S252_IP} ...")
-    # DO 0..DO 4 are owned by the Coordinator & WDT FSV; DO 5..DO 6 are owned by S232 P2P rules
+    # DO 0..DO 1 are owned by S232 P2P rules; DO 2..DO 6 are owned by the Coordinator & WDT FSV
     do_tags_fsv = [
-        (0, 0, "LED_Green_Normal"),   # Adafruit 2993 Green wire; FSV = 0
-        (1, 1, "LED_Amber_Warn"),     # Adafruit 2993 Yellow wire; FSV = 1 (Comm-loss warning)
-        (2, 0, "LED_Red_Alarm"),      # Adafruit 2993 Red wire; FSV = 0
-        (3, 0, "Alarm_Buzzer"),       # Adafruit 2993 Orange wire; FSV = 0
-        (4, 1, "Aux_Fan_Relay"),      # IDEC RV8H-L-D24 Coil A2-; FSV = 1 (Comm-loss cooling request)
-        (5, 0, "P2P_Temp_Fan_Cmd"),   # S232 P2P Rule 0 (IDEC RV8H-L-D24 #2 Coil A2-); FSV = 0
-        (6, 0, "P2P_RH_Warn_Cmd"),    # S232 P2P Rule 1 status output; FSV = 0
+        (0, 0, "P2P_Temp_Fan_Cmd"),   # S232 P2P Rule 0 (Schneider RSL Relay); FSV = 0
+        (1, 0, "P2P_RH_Warn_Cmd"),    # S232 P2P Rule 1 status output; FSV = 0
+        (2, 0, "LED_Green_Normal"),   # Adafruit 2993 Green wire; FSV = 0
+        (3, 1, "LED_Amber_Warn"),     # Adafruit 2993 Yellow wire; FSV = 1 (Comm-loss warning)
+        (4, 0, "LED_Red_Alarm"),      # Adafruit 2993 Red wire; FSV = 0
+        (5, 0, "Alarm_Buzzer"),       # Adafruit 2993 Orange wire; FSV = 0
+        (6, 1, "Aux_Fan_Relay"),      # IDEC RV8H-L-D24 Coil A2-; FSV = 1 (Comm-loss cooling request)
     ]
     s252_do_cfg = {
         "DOCfg": [
@@ -174,7 +171,6 @@ def read_s232_environment():
     channels = {ch["Ch"]: ch["EgF"] for ch in resp.json().get("SVal", [])}
     return float(channels.get(0, 0.0)), float(channels.get(1, 0.0))
 
-
 def read_s252_inputs():
     """
     GET /di_value/slot_0 from WISE-4250-S252 (DI 0..DI 4).
@@ -196,31 +192,27 @@ def read_s252_inputs():
         "reset_active": int(di_map.get(4, {}).get("Stat", 0)),
     }
 
-
 def clear_s252_reset_latch():
     """PATCH /di_value/slot_0/ch_4 to clear the Low-to-High Latch on DI 4."""
     url = f"http://{S252_IP}/di_value/slot_0/ch_4"
     resp = requests.patch(url, json={"Lch": 0}, auth=auth, timeout=3)
     resp.raise_for_status()
 
-
 def write_s252_coordinator_outputs(do_states):
     """
     PATCH /do_value/slot_0 on WISE-4250-S252 for Coordinator-owned channels
-    (DO 0..DO 4 only), leaving P2P-owned channels (DO 5..DO 6) untouched.
+    (DO 2..DO 6 only), leaving P2P-owned channels (DO 0..DO 1) untouched.
     """
     url = f"http://{S252_IP}/do_value/slot_0"
     payload = {
-        "DOVal": [{"Ch": ch_idx, "Val": val} for ch_idx, val in enumerate(do_states)]
+        "DOVal": [{"Ch": ch_idx + 2, "Val": val} for ch_idx, val in enumerate(do_states)]
     }
     resp = requests.patch(url, json=payload, auth=auth, timeout=3)
     resp.raise_for_status()
 
-
 def evaluate_cabinet_logic(temp_c, rh_pct, di):
-    """Evaluate multi-sensor cabinet rules and return (alarm_code, [DO0..DO4])."""
+    """Evaluate multi-sensor cabinet rules and return (alarm_code, [DO2..DO6])."""
     global latched_alarm_code
-
     high_temp = temp_c > TEMP_HIGH_LIMIT_C
     high_rh = rh_pct > RH_HIGH_LIMIT_PCT
 
@@ -235,19 +227,13 @@ def evaluate_cabinet_logic(temp_c, rh_pct, di):
 
     if active_critical > 0:
         latched_alarm_code = active_critical
-        # Discard any reset request initiated while the critical fault is active:
         if di["reset_latched"] == 1:
             clear_s252_reset_latch()
-            
     elif latched_alarm_code >= 2:
-        # Critical condition has cleared; require BOTH a latched push event (reset_latched == 1)
-        # AND physical re-arming of the SSA-EB1P-02 actuator (reset_active == 0) before clearing.
         if di["reset_latched"] == 1 and di["reset_active"] == 0:
             latched_alarm_code = 0
             clear_s252_reset_latch()
 
-    # Determine operating state when no critical alarm is latched:
-    # Returns to State 1 (Warning) if a non-critical warning remains, or State 0 (Normal)
     if latched_alarm_code == 0:
         if high_rh or high_temp or di["filter_warn"] == 1:
             current_state = 1  # Warning State
@@ -256,25 +242,23 @@ def evaluate_cabinet_logic(temp_c, rh_pct, di):
     else:
         current_state = latched_alarm_code
 
-    # Clear stray reset latches during Normal/Warning states once the button is re-armed
     if current_state < 2 and di["reset_latched"] == 1 and di["reset_active"] == 0:
         clear_s252_reset_latch()
 
-    # Map state to Coordinator-owned outputs [DO0_Green, DO1_Amber, DO2_Red, DO3_Buzzer, DO4_AuxFanRelay]
+    # Map state to Coordinator-owned outputs [DO2_Green, DO3_Amber, DO4_Red, DO5_Buzzer, DO6_AuxFanRelay]
     if current_state == 0:
         outputs = [1, 0, 0, 0, 0]
     elif current_state == 1:
-        # DO 1 illuminates for all warnings; DO 4 energizes only for thermal/humidity warnings
+        # DO 3 (Amber) illuminates for all warnings; DO 6 (Aux Fan) energizes only for thermal/humidity warnings
         outputs = [0, 1, 0, 0, 1 if (high_rh or high_temp) else 0]
     elif current_state == 2:
         outputs = [0, 0, 1, 0, 1]
     elif current_state == 3:
         outputs = [0, 0, 1, 1, 1]
-    else:  # current_state == 4 (Leak Alarm: DO 4 forced OFF and upstream NC contact opens +12VDC feed)
+    else:  # current_state == 4 (Leak Alarm: DO 6 forced OFF and upstream NC contact opens +12VDC feed)
         outputs = [0, 0, 1, 1, 0]
 
     return current_state, outputs
-
 
 def publish_to_ubidots(payload):
     """
@@ -289,7 +273,6 @@ def publish_to_ubidots(payload):
         resp.raise_for_status()
     except requests.RequestException as exc:
         print(f"[Cloud Warning] Ubidots telemetry upload failed (local control unaffected): {exc}")
-
 
 def run_coordinator():
     """Main polling, local evaluation, CSV logging, and Ubidots publishing loop."""
@@ -329,17 +312,18 @@ def run_coordinator():
                     "coordinator_fan_request": do_vals[4],
                 }
                 publish_to_ubidots(ubidots_payload)
+
                 print(
                     f"[{ts_iso}] Temp={temp_c:.2f}C | RH={rh_pct:.2f}% | "
-                    f"DI={di} | State={state_code} | DO0..4={do_vals}"
+                    f"DI={di} | State={state_code} | DO2..6={do_vals}"
                 )
             except KeyboardInterrupt:
                 print("\n[!] Stopping coordinator.")
                 sys.exit(0)
             except Exception as exc:
                 print(f"[Local Polling Warning] Cycle error: {exc}")
-            time.sleep(POLL_INTERVAL_SEC)
 
+            time.sleep(POLL_INTERVAL_SEC)
 
 if __name__ == "__main__":
     parser = argparse.ArgumentParser(description="WISE-4250 Cabinet Coordinator")
@@ -349,6 +333,7 @@ if __name__ == "__main__":
         help="Push channel tags, alarms, 20ms filters, Inv=1, and FSV settings via REST API"
     )
     args = parser.parse_args()
+
     if args.provision:
         provision_nodes()
     else:
